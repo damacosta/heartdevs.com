@@ -498,6 +498,19 @@ test('líder vê a Equipe com os números', function (): void {
         ->assertCanSeeTableRecords($moderators);
 });
 
+test('o tempo médio abaixo de 1 hora aparece em minutos', function (): void {
+    actingAsDelasLead();
+    $request = DelasTagRequest::factory()->approved()->create(['requested_at' => now()->subMinutes(20)]);
+    DelasTransition::factory()->for($request->user)->create([
+        'request_id' => $request->getKey(),
+        'action' => DelasAction::Approved,
+    ]);
+
+    livewire(DelasStatsOverview::class)
+        ->assertSee(__('panel-admin::delas.stats.minutes', ['value' => 20]))
+        ->assertDontSee('0 h');
+});
+
 test('líder concede a tag direto pela Equipe', function (): void {
     actingAsDelasLead();
     $target = User::factory()->create();

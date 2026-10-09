@@ -158,6 +158,7 @@ return [
         'month' => 'Decisões no mês',
         'month_desc' => 'aprovadas / rejeitadas',
         'blocks' => 'Bloqueios ativos',
+        'minutes' => ':value min',
         'days' => ':value dias',
         'blocks_desc' => 'só impedem novos pedidos',
     ],

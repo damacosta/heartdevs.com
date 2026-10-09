@@ -158,6 +158,7 @@ return [
         'month' => 'Decisions this month',
         'month_desc' => 'approved / rejected',
         'blocks' => 'Active blocks',
+        'minutes' => ':value min',
         'days' => ':value days',
         'blocks_desc' => 'only prevent new requests',
     ],

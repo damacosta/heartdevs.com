@@ -60,6 +60,8 @@ class DelasStatsOverview extends StatsOverviewWidget
     {
         return match (true) {
             $hours === null => '—',
+            // Abaixo de 1 hora, em minutos: "0 h" parece que não houve decisão.
+            $hours < 1 => __('panel-admin::delas.stats.minutes', ['value' => round($hours * 60)]),
             $hours < 48 => round($hours).' h',
             default => __('panel-admin::delas.stats.days', ['value' => number_format($hours / 24, 1, ',', '.')]),
         };
