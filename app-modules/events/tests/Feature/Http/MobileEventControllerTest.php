@@ -119,6 +119,24 @@ it('rejects check-in without an active enrollment', function (): void {
         ->assertUnprocessable();
 });
 
+it('404s enrolling in an event not viewable by participants', function (): void {
+    $user = User::factory()->create();
+    $token = Auth::guard('api')->login($user);
+    $draft = Event::factory()->create(['status' => EventStatus::Draft]);
+
+    $this->postJson("/api/mobile/events/{$draft->id}/enroll", [], ['Authorization' => "Bearer {$token}"])
+        ->assertNotFound();
+});
+
+it('404s checking in on an event not viewable by participants', function (): void {
+    $user = User::factory()->create();
+    $token = Auth::guard('api')->login($user);
+    $draft = Event::factory()->create(['status' => EventStatus::Draft]);
+
+    $this->postJson("/api/mobile/events/{$draft->id}/check-in", ['code' => '123456'], ['Authorization' => "Bearer {$token}"])
+        ->assertNotFound();
+});
+
 it('rate limits check-in attempts after 5 tries', function (): void {
     $user = User::factory()->create();
     $token = Auth::guard('api')->login($user);

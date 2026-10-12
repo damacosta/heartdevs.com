@@ -42,7 +42,7 @@ final class MobileEventController extends Controller
         $user = $request->user();
 
         $events = Event::query()
-            ->with(['enrollmentPolicy', 'enrollments' => fn (Relation $query): Relation => $query->where('user_id', $user->id)])
+            ->with(['enrollments' => fn (Relation $query): Relation => $query->where('user_id', $user->id)])
             ->viewableByParticipant()
             ->orderBy('starts_at')
             ->simplePaginate(20);
@@ -83,6 +83,8 @@ final class MobileEventController extends Controller
      */
     public function enroll(Request $request, Event $event, EnrollUserAction $enrollUser): JsonResponse
     {
+        throw_unless($event->status->isViewableByParticipant(), NotFoundHttpException::class);
+
         $request->validate([
             'application_data' => ['sometimes', 'array'],
         ]);
@@ -117,6 +119,8 @@ final class MobileEventController extends Controller
      */
     public function checkIn(Request $request, Event $event, NumericCodeCheckInAction $checkIn): JsonResponse
     {
+        throw_unless($event->status->isViewableByParticipant(), NotFoundHttpException::class);
+
         $request->validate([
             'code' => ['required', 'string', new CheckInCodeRule],
         ]);
