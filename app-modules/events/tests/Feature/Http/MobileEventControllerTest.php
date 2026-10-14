@@ -168,6 +168,41 @@ it('generates a check-in code as a super admin', function (): void {
     ]);
 });
 
+it('defaults event_date to the event start date when it is upcoming, not today', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($admin);
+    $event = Event::factory()->asWorkshop()->create(['starts_at' => now()->addDays(7), 'ends_at' => now()->addDays(7)->addHours(3)]);
+
+    $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [], ['Authorization' => "Bearer {$token}"])
+        ->assertCreated()
+        ->assertJsonPath('event_date', $event->starts_at->toDateString());
+});
+
+it('rejects an expires_at that is not after starts_at', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($admin);
+    $event = Event::factory()->asWorkshop()->upcoming()->create();
+
+    $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [
+        'starts_at' => now()->addDays(7)->toIso8601String(),
+        'expires_at' => now()->addDays(7)->toIso8601String(),
+    ], ['Authorization' => "Bearer {$token}"])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['expires_at']);
+});
+
+it('generates distinct codes across back-to-back requests for the same event', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($admin);
+    $event = Event::factory()->asWorkshop()->upcoming()->create();
+
+    $first = $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [], ['Authorization' => "Bearer {$token}"])->assertCreated();
+    $second = $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [], ['Authorization' => "Bearer {$token}"])->assertCreated();
+
+    expect($first->json('code'))->not->toBe($second->json('code'));
+    $this->assertDatabaseCount('events_check_in_codes', 2);
+});
+
 it('rejects generating a check-in code for a non-admin', function (): void {
     $user = User::factory()->create();
     $token = Auth::guard('api')->login($user);

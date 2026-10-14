@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace He4rt\Events\Http\Controllers\Mobile;
 
 use App\Http\Controllers\Controller;
+use Carbon\CarbonInterface;
 use He4rt\Events\CheckIn\Actions\GenerateCheckInCode;
 use He4rt\Events\CheckIn\Actions\NumericCodeCheckInAction;
 use He4rt\Events\CheckIn\DTOs\GenerateCheckInCodeDTO;
@@ -28,6 +29,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 final class MobileEventController extends Controller
@@ -192,14 +194,18 @@ final class MobileEventController extends Controller
                 'before_or_equal:'.$event->ends_at->toDateString(),
             ],
             'starts_at' => ['sometimes', 'date'],
-            'expires_at' => ['sometimes', 'date', 'after:starts_at'],
+            'expires_at' => ['sometimes', 'date'],
             'max_uses' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'digits' => ['sometimes', Rule::in([4, 6])],
         ]);
 
         $startsAt = $request->filled('starts_at') ? Date::parse($request->string('starts_at')->toString()) : Date::now();
         $expiresAt = $request->filled('expires_at') ? Date::parse($request->string('expires_at')->toString()) : $startsAt->clone()->addHours(2);
-        $eventDate = $request->filled('event_date') ? Date::parse($request->string('event_date')->toString()) : Date::today();
+        $eventDate = $request->filled('event_date') ? Date::parse($request->string('event_date')->toString()) : $this->defaultEventDate($event);
+
+        throw_unless($expiresAt->isAfter($startsAt), ValidationException::withMessages([
+            'expires_at' => 'The expires at must be a date after starts at.',
+        ]));
 
         $checkInCode = $generateCheckInCode->handle(new GenerateCheckInCodeDTO(
             eventId: $event->id,
@@ -215,6 +221,24 @@ final class MobileEventController extends Controller
             'event_date' => $checkInCode->event_date->toDateString(),
             'expires_at' => $checkInCode->expires_at->toIso8601String(),
         ], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Sem event_date explícito, "hoje" só serve de default se o evento
+     * estiver rolando agora — fora da janela, cai no dia mais próximo
+     * dela (starts_at pra evento futuro, ends_at pra evento já encerrado).
+     */
+    private function defaultEventDate(Event $event): CarbonInterface
+    {
+        $today = Date::today();
+        $startsAtDate = $event->starts_at->copy()->startOfDay();
+        $endsAtDate = $event->ends_at->copy()->startOfDay();
+
+        return match (true) {
+            $today->lt($startsAtDate) => $startsAtDate,
+            $today->gt($endsAtDate) => $endsAtDate,
+            default => $today,
+        };
     }
 
     private function checkInRateLimitKey(string $userId, string $eventId, ?string $ip): string
