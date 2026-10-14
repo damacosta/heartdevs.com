@@ -81,6 +81,8 @@ O login web hoje (`OAuthController::getAuthenticate`) termina em `Auth::login()`
 
 Não existe rota de callback mobile própria — o callback do provider bate direto em `/auth/oauth/{provider}` (rota web já existente), ver passo 3 acima.
 
+**PS — `is_super_admin` em `/me`**: pedido do app mobile pra decidir se mostra o menu de staff. `hasRole()`/`isSuperAdmin()` do spatie/laravel-permission funcionam normalmente num usuário autenticado pelo guard `api` (JWT) mesmo as roles sendo todas cadastradas no guard `web` — confirmado na prática antes de expor (a checagem opera na relação do model, não no guard HTTP ativo). `/me` agora devolve `{id, username, avatar_url, is_super_admin}`.
+
 ---
 
 ## Feature 1 — Timeline
@@ -131,6 +133,8 @@ Não existe hoje uma ação self-service equivalente à `NumericCodeCheckInActio
 Recomendação: opção 1 é bem mais barata e resolve o que o PRD pede ("QR como alternativa ao numérico", não "QR como terceiro sistema"). Fica registrado aqui pra não repetir a investigação — mas é uma decisão de produto, não só técnica, então deveria ser confirmada na issue antes da Feature 2 entrar em código.
 
 **Status: parcialmente implementado** (`He4rt\Events\Http\Controllers\Mobile\MobileEventController` + `Http\Resources\EventResource`/`EventDetailResource`). `GET /events`, `GET /events/{event}` (com `can_apply`/`can_confirm_presence`/`is_event_full`, mesmas regras do `EventDetail.php`), `POST /events/{event}/enroll` e `POST /events/{event}/check-in` (numérico, com o mesmo rate limit de 5/60s do Livewire) implementados. `GET /events/{event}/qr` **fica de fora** até a decisão de produto acima ser confirmada.
+
+**PS — geração de código de check-in pra staff**: não existia nenhum jeito de _criar_ um `CheckInCode` fora do painel admin (só havia `GenerateCheckInCodeAction`, uma Filament Action acoplada à UI do admin). Extraí a lógica (geração do código numérico + criação do registro) pra uma Action de domínio nova, `He4rt\Events\CheckIn\Actions\GenerateCheckInCode`, reaproveitável fora do Filament. `POST /api/mobile/events/{event}/check-in-codes` — staff-only (`isSuperAdmin()`, sem conceito de organizador por evento, decisão explícita), devolve `{code, event_date, expires_at}`.
 
 ---
 

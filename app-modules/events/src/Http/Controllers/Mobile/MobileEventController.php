@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace He4rt\Events\Http\Controllers\Mobile;
 
 use App\Http\Controllers\Controller;
+use Carbon\CarbonInterface;
+use He4rt\Events\CheckIn\Actions\GenerateCheckInCode;
 use He4rt\Events\CheckIn\Actions\NumericCodeCheckInAction;
+use He4rt\Events\CheckIn\DTOs\GenerateCheckInCodeDTO;
 use He4rt\Events\CheckIn\DTOs\NumericCodeCheckInDTO;
 use He4rt\Events\CheckIn\Exceptions\CheckInException;
 use He4rt\Events\CheckIn\Rules\CheckInCodeRule;
@@ -25,6 +28,8 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 final class MobileEventController extends Controller
@@ -165,6 +170,75 @@ final class MobileEventController extends Controller
             'event_date' => $checkInRecord->event_date->toDateString(),
             'checked_in_at' => $checkInRecord->checked_in_at?->toIso8601String(),
         ], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Gerar código de check-in
+     *
+     * Staff-only (super admin) — sem conceito de organizador por evento,
+     * por decisão explícita. Pensado pra ser anunciado ao vivo pra galera
+     * digitar (ou, futuramente, escanear) no self-check-in.
+     */
+    public function generateCheckInCode(Request $request, Event $event, GenerateCheckInCode $generateCheckInCode): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        abort_unless($user->isSuperAdmin(), Response::HTTP_FORBIDDEN);
+
+        $request->validate([
+            'event_date' => [
+                'sometimes',
+                'date',
+                'after_or_equal:'.$event->starts_at->toDateString(),
+                'before_or_equal:'.$event->ends_at->toDateString(),
+            ],
+            'starts_at' => ['sometimes', 'date'],
+            'expires_at' => ['sometimes', 'date'],
+            'max_uses' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'digits' => ['sometimes', Rule::in([4, 6])],
+        ]);
+
+        $startsAt = $request->filled('starts_at') ? Date::parse($request->string('starts_at')->toString()) : Date::now();
+        $expiresAt = $request->filled('expires_at') ? Date::parse($request->string('expires_at')->toString()) : $startsAt->clone()->addHours(2);
+        $eventDate = $request->filled('event_date') ? Date::parse($request->string('event_date')->toString()) : $this->defaultEventDate($event);
+
+        throw_unless($expiresAt->isAfter($startsAt), ValidationException::withMessages([
+            'expires_at' => 'The expires at must be a date after starts at.',
+        ]));
+
+        $checkInCode = $generateCheckInCode->handle(new GenerateCheckInCodeDTO(
+            eventId: $event->id,
+            eventDate: $eventDate,
+            startsAt: $startsAt,
+            expiresAt: $expiresAt,
+            maxUses: $request->filled('max_uses') ? (int) $request->input('max_uses') : null,
+            digits: (int) $request->input('digits', 6),
+        ));
+
+        return response()->json([
+            'code' => $checkInCode->code,
+            'event_date' => $checkInCode->event_date->toDateString(),
+            'expires_at' => $checkInCode->expires_at->toIso8601String(),
+        ], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Sem event_date explícito, "hoje" só serve de default se o evento
+     * estiver rolando agora — fora da janela, cai no dia mais próximo
+     * dela (starts_at pra evento futuro, ends_at pra evento já encerrado).
+     */
+    private function defaultEventDate(Event $event): CarbonInterface
+    {
+        $today = Date::today();
+        $startsAtDate = $event->starts_at->copy()->startOfDay();
+        $endsAtDate = $event->ends_at->copy()->startOfDay();
+
+        return match (true) {
+            $today->lt($startsAtDate) => $startsAtDate,
+            $today->gt($endsAtDate) => $endsAtDate,
+            default => $today,
+        };
     }
 
     private function checkInRateLimitKey(string $userId, string $eventId, ?string $ip): string

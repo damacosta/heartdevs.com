@@ -19,4 +19,7 @@ Route::prefix('api/mobile')
 
         Route::post('/events/{event}/check-in', [MobileEventController::class, 'checkIn'])
             ->name('mobile.events.check-in');
+
+        Route::post('/events/{event}/check-in-codes', [MobileEventController::class, 'generateCheckInCode'])
+            ->name('mobile.events.check-in-codes.store');
     });
