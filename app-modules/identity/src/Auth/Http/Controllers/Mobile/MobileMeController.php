@@ -25,6 +25,7 @@ final class MobileMeController extends Controller
             'id' => $user->id,
             'username' => $user->username,
             'avatar_url' => $user->getFilamentAvatarUrl(),
+            'is_super_admin' => $user->isSuperAdmin(),
         ]);
     }
 }

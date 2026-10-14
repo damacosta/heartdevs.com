@@ -150,3 +150,51 @@ it('rate limits check-in attempts after 5 tries', function (): void {
     $this->postJson("/api/mobile/events/{$event->id}/check-in", ['code' => '999999'], ['Authorization' => "Bearer {$token}"])
         ->assertTooManyRequests();
 });
+
+it('generates a check-in code as a super admin', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($admin);
+    $event = Event::factory()->asWorkshop()->upcoming()->create();
+
+    $response = $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [], ['Authorization' => "Bearer {$token}"])
+        ->assertCreated()
+        ->assertJsonStructure(['code', 'event_date', 'expires_at']);
+
+    expect($response->json('code'))->toMatch('/^\d{6}$/');
+
+    $this->assertDatabaseHas('events_check_in_codes', [
+        'event_id' => $event->id,
+        'code' => $response->json('code'),
+    ]);
+});
+
+it('rejects generating a check-in code for a non-admin', function (): void {
+    $user = User::factory()->create();
+    $token = Auth::guard('api')->login($user);
+    $event = Event::factory()->asWorkshop()->upcoming()->create();
+
+    $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [], ['Authorization' => "Bearer {$token}"])
+        ->assertForbidden();
+});
+
+it('generates a 4-digit check-in code on request', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($admin);
+    $event = Event::factory()->asWorkshop()->upcoming()->create();
+
+    $response = $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", ['digits' => 4], ['Authorization' => "Bearer {$token}"])
+        ->assertCreated();
+
+    expect($response->json('code'))->toMatch('/^\d{4}$/');
+});
+
+it('rejects an event_date outside the event window', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($admin);
+    $event = Event::factory()->asWorkshop()->create(['starts_at' => now()->addDays(5), 'ends_at' => now()->addDays(5)->addHours(3)]);
+
+    $this->postJson("/api/mobile/events/{$event->id}/check-in-codes", [
+        'event_date' => now()->addDays(20)->toDateString(),
+    ], ['Authorization' => "Bearer {$token}"])
+        ->assertUnprocessable();
+});
