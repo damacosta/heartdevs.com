@@ -81,6 +81,8 @@ O login web hoje (`OAuthController::getAuthenticate`) termina em `Auth::login()`
 
 Não existe rota de callback mobile própria — o callback do provider bate direto em `/auth/oauth/{provider}` (rota web já existente), ver passo 3 acima.
 
+**PS — `is_super_admin` em `/me`**: pedido do app mobile pra decidir se mostra o menu de staff. `hasRole()`/`isSuperAdmin()` do spatie/laravel-permission funcionam normalmente num usuário autenticado pelo guard `api` (JWT) mesmo as roles sendo todas cadastradas no guard `web` — confirmado na prática antes de expor (a checagem opera na relação do model, não no guard HTTP ativo). `/me` agora devolve `{id, username, avatar_url, is_super_admin}`.
+
 ---
 
 ## Feature 1 — Timeline
@@ -99,6 +101,8 @@ Sem gap de domínio — é serialização pura em cima do que já existe. O corp
 **Fora do v1, decisão explícita**: reações (`withCount('reactions')` aparece no `Feed.php`) — o PRD não menciona reagir como escopo v1 do app; incluir a contagem na resposta é grátis, mas o endpoint de reagir fica pra depois se a issue não abrir esse escopo.
 
 **Status: implementado** (`He4rt\Activity\Timeline\Http\Controllers\Mobile\MobileTimelineController` + `Http\Resources\TimelinePostResource`). Upload de imagens aceito via multipart (`images[]`), armazenado no mesmo diretório `timeline-uploads` que o Composer do painel usa. Rotas em `app-modules/activity/routes/api-mobile-routes.php`.
+
+**PS — curtir, fora do original "fora do v1" acima**: o pedido veio do app mobile depois que o resto da Feature 1 já estava no ar. Investigando antes de implementar: `activity_reactions` (o que o `reactions_count` acima mede) é um espelho agregado por emoji sincronizado do Discord (`ImportDiscordReactionsAction`), sem `user_id` — não dá pra saber quem reagiu, e reaproveitar essa tabela pra curtida própria do app quebraria a unique constraint `(reactable_type, reactable_id, emoji_key)` assim que dois usuários curtissem o mesmo post. Implementado como sistema novo e independente: tabela `activity_timeline_likes` (`timeline_id` + `user_id`, unique por par), `LikePost`/`UnlikePost` Actions, `POST`/`DELETE /api/mobile/timeline/{post}/like` (ambos idempotentes), expostos no `TimelinePostResource` como `likes_count`/`liked_by_me` — campos distintos de `reactions_count`, que continua só espelhando o Discord.
 
 ---
 
@@ -127,6 +131,10 @@ Não existe hoje uma ação self-service equivalente à `NumericCodeCheckInActio
 2. **QR é uma entidade própria** (novo token, não o `CheckInCode` compartilhado) — precisa de uma `QrCodeSelfCheckInAction` nova, espelhando a `NumericCodeCheckInAction` mas validando um token diferente. Mais trabalho, mais uma tabela ou reuso do `QrToken` com uma regra nova de quem pode consumir (hoje `QrToken` é pensado pra ser consumido por um `Admin`, não pelo próprio dono).
 
 Recomendação: opção 1 é bem mais barata e resolve o que o PRD pede ("QR como alternativa ao numérico", não "QR como terceiro sistema"). Fica registrado aqui pra não repetir a investigação — mas é uma decisão de produto, não só técnica, então deveria ser confirmada na issue antes da Feature 2 entrar em código.
+
+**Status: parcialmente implementado** (`He4rt\Events\Http\Controllers\Mobile\MobileEventController` + `Http\Resources\EventResource`/`EventDetailResource`). `GET /events`, `GET /events/{event}` (com `can_apply`/`can_confirm_presence`/`is_event_full`, mesmas regras do `EventDetail.php`), `POST /events/{event}/enroll` e `POST /events/{event}/check-in` (numérico, com o mesmo rate limit de 5/60s do Livewire) implementados. `GET /events/{event}/qr` **fica de fora** até a decisão de produto acima ser confirmada.
+
+**PS — geração de código de check-in pra staff**: não existia nenhum jeito de _criar_ um `CheckInCode` fora do painel admin (só havia `GenerateCheckInCodeAction`, uma Filament Action acoplada à UI do admin). Extraí a lógica (geração do código numérico + criação do registro) pra uma Action de domínio nova, `He4rt\Events\CheckIn\Actions\GenerateCheckInCode`, reaproveitável fora do Filament. `POST /api/mobile/events/{event}/check-in-codes` — staff-only (`isSuperAdmin()`, sem conceito de organizador por evento, decisão explícita), devolve `{code, event_date, expires_at}`.
 
 ---
 

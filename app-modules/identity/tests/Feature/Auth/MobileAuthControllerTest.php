@@ -50,7 +50,16 @@ test('me returns the authenticated user', function (): void {
 
     $this->getJson('/api/mobile/me', ['Authorization' => "Bearer {$token}"])
         ->assertOk()
-        ->assertJson(['id' => $user->id, 'username' => 'he4rtdev']);
+        ->assertJson(['id' => $user->id, 'username' => 'he4rtdev', 'is_super_admin' => false]);
+});
+
+test('me reports is_super_admin true for a super admin, even authenticated via the api guard', function (): void {
+    $user = User::factory()->superAdmin()->create();
+    $token = Auth::guard('api')->login($user);
+
+    $this->getJson('/api/mobile/me', ['Authorization' => "Bearer {$token}"])
+        ->assertOk()
+        ->assertJsonPath('is_super_admin', true);
 });
 
 test('me rejects a request without a token', function (): void {
