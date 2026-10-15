@@ -356,6 +356,12 @@ Sem coluna `metadata`: nenhum fluxo a preenche, e um jsonb sem forma quebraria o
 `ReviewAppeal`). As que mudam estado rodam em `DB::transaction` com `lockForUpdate()` e gravam
 a linha de histórico.
 
+As que mudam a situação de uma pessoa (pedir, conceder, bloquear, remover a tag, adicionar e
+revogar moderadora) começam a transação travando a pessoa (`PersonLock`) e só depois
+verificam a situação dela. Assim, duas decisões sobre a mesma pessoa esperam a vez uma da
+outra, e nenhuma decide com uma leitura velha: por exemplo, conceder a tag enquanto alguém
+bloqueia, ou tirar a tag enquanto alguém adiciona a pessoa como moderadora.
+
 | Action                                       | Gate do ator                                       | Faz                                                                                    |
 | -------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `RequestDelasTag`                            | (própria pessoa)                                   | valida ativa, espera e bloqueio; cria `pending`                                        |
