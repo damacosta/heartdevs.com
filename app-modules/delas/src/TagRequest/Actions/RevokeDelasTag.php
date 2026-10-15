@@ -8,6 +8,7 @@ use He4rt\Delas\Block\Actions\BlockDelasRequester;
 use He4rt\Delas\Exceptions\DelasException;
 use He4rt\Delas\History\Actions\RecordDelasTransition;
 use He4rt\Delas\History\Enums\DelasAction;
+use He4rt\Delas\Support\PersonLock;
 use He4rt\Delas\Support\Reason;
 use He4rt\Delas\TagRequest\Enums\DelasRequestStatus;
 use He4rt\Delas\TagRequest\Events\DelasTagRevoked;
@@ -46,12 +47,15 @@ final readonly class RevokeDelasTag
         Gate::forUser($actor)->authorize('lead-delas');
 
         throw_if($target->is($actor), DelasException::cannotDecideOwn());
-        // Equipe é quem passa no `moderate-delas`: moderadora, líder ou super admin.
-        throw_if(Gate::forUser($target)->allows('moderate-delas'), DelasException::teamMemberKeepsTag());
 
         $reason = Reason::required($reason);
 
         return DB::transaction(function () use ($target, $actor, $reason, $alsoBlock): DelasTagRequest {
+            PersonLock::acquire($target);
+
+            // Equipe é quem passa no `moderate-delas`: moderadora, líder ou super admin.
+            throw_if(Gate::forUser($target)->allows('moderate-delas'), DelasException::teamMemberKeepsTag());
+
             $approved = DelasTagRequest::query()
                 ->where('user_id', $target->getKey())
                 ->where('status', DelasRequestStatus::Approved)

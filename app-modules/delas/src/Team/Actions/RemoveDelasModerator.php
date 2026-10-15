@@ -7,6 +7,7 @@ namespace He4rt\Delas\Team\Actions;
 use He4rt\Delas\Exceptions\DelasException;
 use He4rt\Delas\History\Actions\RecordDelasTransition;
 use He4rt\Delas\History\Enums\DelasAction;
+use He4rt\Delas\Support\PersonLock;
 use He4rt\Identity\Authorization\Enums\UserRole;
 use He4rt\Identity\User\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -31,13 +32,15 @@ final readonly class RemoveDelasModerator
     {
         Gate::forUser($actor)->authorize('lead-delas');
 
-        throw_if(
-            $target->isSuperAdmin() || $target->hasRole(UserRole::DelasLead),
-            DelasException::cannotManageRole(),
-        );
-        throw_unless($target->hasRole(UserRole::DelasModerator), DelasException::notModerator());
-
         DB::transaction(function () use ($target, $actor): void {
+            PersonLock::acquire($target);
+
+            throw_if(
+                $target->isSuperAdmin() || $target->hasRole(UserRole::DelasLead),
+                DelasException::cannotManageRole(),
+            );
+            throw_unless($target->hasRole(UserRole::DelasModerator), DelasException::notModerator());
+
             $target->removeRole(UserRole::DelasModerator);
 
             $this->recordTransition->handle(

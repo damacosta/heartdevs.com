@@ -10,6 +10,7 @@ use He4rt\Delas\Block\Models\DelasRequesterBlock;
 use He4rt\Delas\Exceptions\DelasException;
 use He4rt\Delas\History\Actions\RecordDelasTransition;
 use He4rt\Delas\History\Enums\DelasAction;
+use He4rt\Delas\Support\PersonLock;
 use He4rt\Delas\Support\Reason;
 use He4rt\Delas\TagRequest\Enums\DelasRequestStatus;
 use He4rt\Delas\TagRequest\Events\DelasTagGranted;
@@ -43,10 +44,16 @@ final readonly class GrantDelasTag
 
         throw_if($target->is($actor), DelasException::cannotDecideOwn());
 
-        $activeBlock = DelasRequesterBlock::query()->where('user_id', $target->getKey())->active()->first();
-        $reason = $activeBlock instanceof DelasRequesterBlock ? Reason::required($reason) : Reason::optional($reason);
+        [$request, $liftedBlock] = DB::transaction(function () use ($target, $actor, $reason): array {
+            PersonLock::acquire($target);
 
-        [$request, $liftedBlock] = DB::transaction(function () use ($target, $actor, $reason, $activeBlock): array {
+            $activeBlock = DelasRequesterBlock::query()
+                ->where('user_id', $target->getKey())
+                ->active()
+                ->lockForUpdate()
+                ->first();
+            $reason = $activeBlock instanceof DelasRequesterBlock ? Reason::required($reason) : Reason::optional($reason);
+
             $current = DelasTagRequest::query()
                 ->where('user_id', $target->getKey())
                 ->active()

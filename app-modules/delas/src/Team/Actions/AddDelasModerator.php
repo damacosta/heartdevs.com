@@ -7,6 +7,7 @@ namespace He4rt\Delas\Team\Actions;
 use He4rt\Delas\Exceptions\DelasException;
 use He4rt\Delas\History\Actions\RecordDelasTransition;
 use He4rt\Delas\History\Enums\DelasAction;
+use He4rt\Delas\Support\PersonLock;
 use He4rt\Delas\TagRequest\Queries\DelasEligibility;
 use He4rt\Identity\Authorization\Enums\UserRole;
 use He4rt\Identity\User\Models\User;
@@ -34,14 +35,16 @@ final readonly class AddDelasModerator
     {
         Gate::forUser($actor)->authorize('lead-delas');
 
-        throw_if(
-            $target->isSuperAdmin() || $target->hasRole(UserRole::DelasLead),
-            DelasException::cannotManageRole(),
-        );
-        throw_if($target->hasRole(UserRole::DelasModerator), DelasException::alreadyModerator());
-        throw_unless($this->eligibility->hasTag($target), DelasException::moderatorNeedsTag());
-
         DB::transaction(function () use ($target, $actor): void {
+            PersonLock::acquire($target);
+
+            throw_if(
+                $target->isSuperAdmin() || $target->hasRole(UserRole::DelasLead),
+                DelasException::cannotManageRole(),
+            );
+            throw_if($target->hasRole(UserRole::DelasModerator), DelasException::alreadyModerator());
+            throw_unless($this->eligibility->hasTag($target), DelasException::moderatorNeedsTag());
+
             $target->assignRole(UserRole::DelasModerator);
 
             $this->recordTransition->handle(

@@ -9,6 +9,7 @@ use He4rt\Delas\Block\Models\DelasRequesterBlock;
 use He4rt\Delas\Exceptions\DelasException;
 use He4rt\Delas\History\Actions\RecordDelasTransition;
 use He4rt\Delas\History\Enums\DelasAction;
+use He4rt\Delas\Support\PersonLock;
 use He4rt\Delas\Support\Reason;
 use He4rt\Delas\TagRequest\Actions\RejectDelasRequest;
 use He4rt\Delas\TagRequest\Events\DelasTagRejected;
@@ -40,15 +41,23 @@ final readonly class BlockDelasRequester
 
         $reason = Reason::required($reason);
 
-        // Ninguém da equipe (nem super admin) é bloqueado, nem a si mesma.
-        throw_if(
-            $target->is($actor) || Gate::forUser($target)->allows('moderate-delas'),
-            DelasException::cannotBlockTeam(),
-        );
-
         try {
             [$block, $rejected] = DB::transaction(function () use ($target, $actor, $reason): array {
-                $pending = DelasTagRequest::query()->where('user_id', $target->getKey())->pending()->first();
+                PersonLock::acquire($target);
+
+                // Ninguém da equipe (nem super admin) é bloqueado, nem a si mesma.
+                throw_if(
+                    $target->is($actor) || Gate::forUser($target)->allows('moderate-delas'),
+                    DelasException::cannotBlockTeam(),
+                );
+
+                // Travado: se o pedido for aprovado ao mesmo tempo, o Postgres espera e
+                // relê a linha. Já aprovado, ele não volta, e o bloqueio segue sem rejeitar nada.
+                $pending = DelasTagRequest::query()
+                    ->where('user_id', $target->getKey())
+                    ->pending()
+                    ->lockForUpdate()
+                    ->first();
                 $rejected = $pending instanceof DelasTagRequest
                     ? $this->rejectRequest->rejectInTransaction($pending, $actor, $reason)
                     : null;

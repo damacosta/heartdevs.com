@@ -7,6 +7,7 @@ namespace He4rt\Delas\TagRequest\Actions;
 use He4rt\Delas\Exceptions\DelasException;
 use He4rt\Delas\History\Actions\RecordDelasTransition;
 use He4rt\Delas\History\Enums\DelasAction;
+use He4rt\Delas\Support\PersonLock;
 use He4rt\Delas\TagRequest\Enums\DelasEligibilityState;
 use He4rt\Delas\TagRequest\Enums\DelasRequestStatus;
 use He4rt\Delas\TagRequest\Events\DelasTagRequested;
@@ -31,18 +32,12 @@ final readonly class RequestDelasTag
      */
     public function handle(User $user): DelasTagRequest
     {
-        $eligibility = $this->eligibility->for($user);
-
-        match ($eligibility->state) {
-            DelasEligibilityState::Pending, DelasEligibilityState::Member => throw DelasException::alreadyHasActiveRequest(),
-            DelasEligibilityState::Blocked => throw DelasException::blocked(),
-            DelasEligibilityState::Cooldown => throw DelasException::inCooldown($eligibility->nextAllowedAt ?? now()),
-            DelasEligibilityState::DiscordRequired => throw DelasException::discordRequired(),
-            DelasEligibilityState::CanRequest => null,
-        };
-
         try {
             $request = DB::transaction(function () use ($user): DelasTagRequest {
+                PersonLock::acquire($user);
+
+                $this->ensureCanRequest($user);
+
                 $request = DelasTagRequest::query()->create([
                     'user_id' => $user->getKey(),
                     'status' => DelasRequestStatus::Pending,
@@ -67,5 +62,21 @@ final readonly class RequestDelasTag
         event(new DelasTagRequested($request->getKey(), $user->getKey()));
 
         return $request;
+    }
+
+    /**
+     * @throws DelasException
+     */
+    private function ensureCanRequest(User $user): void
+    {
+        $eligibility = $this->eligibility->for($user);
+
+        match ($eligibility->state) {
+            DelasEligibilityState::Pending, DelasEligibilityState::Member => throw DelasException::alreadyHasActiveRequest(),
+            DelasEligibilityState::Blocked => throw DelasException::blocked(),
+            DelasEligibilityState::Cooldown => throw DelasException::inCooldown($eligibility->nextAllowedAt ?? now()),
+            DelasEligibilityState::DiscordRequired => throw DelasException::discordRequired(),
+            DelasEligibilityState::CanRequest => null,
+        };
     }
 }
