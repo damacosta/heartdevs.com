@@ -11,7 +11,10 @@
 /.fleet
 /.idea
 /.kiro
-/.agents
+/.agents/*
+!/.agents/setup
+!/.agents/resume
+/.amp/portals/*
 /.laracord
 /.nova
 /.phpunit.cache
@@ -52,6 +55,7 @@ tests/Browser/Screenshots
 
 # Laravel Boost
 boost.json
+.amp/settings.json
 .junie
 .junie/
 .mcp.json
