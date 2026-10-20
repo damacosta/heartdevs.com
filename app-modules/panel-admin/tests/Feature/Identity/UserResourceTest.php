@@ -316,26 +316,50 @@ test('quem não é super admin não concede papéis nem forçando o estado do fo
         ->and($role->exists)->toBeTrue();
 });
 
-test('salvar o form concede um papel da He4rt Delas a outro usuário', function (UserRole $role): void {
+test('salvar o form concede líder da He4rt Delas a outro usuário', function (): void {
     $other = User::factory()->create();
 
     livewire(EditUser::class, ['record' => $other->getKey()])
-        ->fillForm(['roles' => [Role::findByName($role->value, UserRole::GUARD)->getKey()]])
+        ->fillForm(['roles' => [Role::findByName(UserRole::DelasLead->value, UserRole::GUARD)->getKey()]])
         ->call('save')
         ->assertHasNoFormErrors();
 
-    expect($other->fresh()->hasRole($role))->toBeTrue();
-})->with([UserRole::DelasModerator, UserRole::DelasLead]);
+    expect($other->fresh()->hasRole(UserRole::DelasLead))->toBeTrue();
+});
 
-test('marcar moderadora desmarca líder da He4rt Delas', function (): void {
+test('moderadora fica desabilitada no form, com a dica de gerenciar pela Equipe', function (): void {
     $other = User::factory()->create();
-    $lead = (string) Role::findByName(UserRole::DelasLead->value, UserRole::GUARD)->getKey();
-    $moderator = (string) Role::findByName(UserRole::DelasModerator->value, UserRole::GUARD)->getKey();
+    $moderator = Role::findByName(UserRole::DelasModerator->value, UserRole::GUARD);
 
     livewire(EditUser::class, ['record' => $other->getKey()])
-        ->fillForm(['roles' => [$lead]])
-        ->fillForm(['roles' => [$lead, $moderator]])
-        ->assertSchemaStateSet(['roles' => [$moderator]]);
+        ->assertSchemaComponentExists('roles', checkComponentUsing: fn (CheckboxList $field): bool => $field->isOptionDisabled((string) $moderator->getKey(), $moderator->name))
+        ->assertSee('Gerencie pela Equipe da He4rt Delas.');
+});
+
+test('o form não concede moderadora, nem forçando o estado', function (): void {
+    // Sem a tag: pela Equipe, a `AddDelasModerator` recusaria.
+    $other = User::factory()->create();
+
+    livewire(EditUser::class, ['record' => $other->getKey()])
+        ->set('data.roles', [Role::findByName(UserRole::DelasModerator->value, UserRole::GUARD)->getKey()])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($other->fresh()->hasRole(UserRole::DelasModerator))->toBeFalse();
+});
+
+test('salvar o form não tira o papel de quem já é moderadora', function (): void {
+    $moderator = User::factory()->delasModerator()->create();
+    $streamer = Role::findByName(UserRole::Streamer->value, UserRole::GUARD);
+
+    livewire(EditUser::class, ['record' => $moderator->getKey()])
+        ->set('data.roles', [$streamer->getKey()])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($moderator->fresh())
+        ->hasRole(UserRole::DelasModerator)->toBeTrue()
+        ->hasRole(UserRole::Streamer)->toBeTrue();
 });
 
 test('marcar líder desmarca moderadora da He4rt Delas', function (): void {
