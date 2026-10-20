@@ -154,9 +154,16 @@ que a moderadora tem, mais:
 
 ### Administração (super admins)
 
-- Atribuem e retiram `delas-lead` e `delas-moderator` pela seção Papéis do formulário de usuário
-  (`UserForm`), que já existe. O acesso some na próxima requisição, porque `hasRole` lê
-  `model_has_roles` a cada request.
+- Atribuem e retiram `delas-lead` pela seção Papéis do formulário de usuário (`UserForm`), que
+  já existe. O acesso some na próxima requisição, porque `hasRole` lê `model_has_roles` a cada
+  request.
+- `delas-moderator` só se ganha e se perde pela Equipe da He4rt Delas (`AddDelasModerator` e
+  `RemoveDelasModerator`), que conferem a tag e gravam o histórico. No `UserForm`, a opção
+  aparece desabilitada, com a dica "Gerencie pela Equipe da He4rt Delas", e o papel fica como
+  está ao salvar. Promover uma moderadora a líder pelo `UserForm` continua possível: líder e
+  moderadora são exclusivas, e marcar líder troca o papel.
+    - _Por quê:_ pelo `UserForm`, alguém sem a tag virava moderadora sem passar pela regra da
+      Equipe e sem registro no histórico.
 - Passam em todos os gates (via `Gate::before`) e veem as páginas da He4rt Delas como uma
   líder.
 
@@ -420,8 +427,9 @@ dispara também `DelasRequesterUnblocked`. Nenhum listener nesta entrega.
 - Cada tabela declara o eager load (`user.roles` na fila, `user` e `blocker` nos bloqueios,
   `user`, `actor` e `corrections.actor` no histórico, `user` e `decider` na Membras, `roles` na
   equipe).
-- A seção Papéis do `UserForm`, onde super admins atribuem `delas-lead` e `delas-moderator`,
-  visível só para super admins; a tabela de Usuários só **mostra** as roles (badges).
+- A seção Papéis do `UserForm`, onde super admins atribuem `delas-lead` (`delas-moderator`
+  aparece desabilitada: é gerenciada pela Equipe), visível só para super admins; a tabela de
+  Usuários só **mostra** as roles (badges).
 
 ### Identidade visual
 
